@@ -64,8 +64,6 @@ For more information on each package and its documentation, please refer to the 
 
 Please refer to the documentation for each package to learn more about their functionalities and usage.
 
-```
-
 ## Installation
 
 To use this code, you can clone this repository using the following command:
