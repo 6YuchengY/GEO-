@@ -89,4 +89,3 @@ Alternatively, you can download the code as a ZIP file by clicking on the "Code"
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
-```
