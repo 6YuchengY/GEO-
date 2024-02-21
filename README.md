@@ -1,4 +1,4 @@
-```
+
 # GEO Data Analysis
 
 This repository contains code and instructions for analyzing gene expression data from the Gene Expression Omnibus (GEO) database. The code provided here demonstrates how to download and preprocess GEO data, perform differential gene expression analysis, and visualize the results.
