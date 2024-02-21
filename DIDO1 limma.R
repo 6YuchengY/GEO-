@@ -8,8 +8,6 @@ library(openxlsx)
 library(readxl)
 library(writexl)
 
-
-
 folder_dir <- "GEO/result/"
 Gene <- "DIDO1"
 
@@ -57,8 +55,6 @@ tempOutput = topTable(fit2, coef=1, n=Inf)#如果需要第一组A的差异基因
 nrDEG = na.omit(tempOutput) 
 head(nrDEG)
 
-# 可以在调用 topTable 函数时使用 logbase 参数指定所需的对数底
-# tempOutput = topTable(fit2, coef=1, n=Inf, logbase=10)
 
 condition1 <- nrDEG$adj.P.Val < 0.05
 # FC看情况调整，有些数据
@@ -75,8 +71,6 @@ library(GEOquery)
 gpl <- getGEO('GPL15207', destdir=".")
 colnames(Table(gpl)) ## [1] 49395 24
 probe2symbol=Table(gpl)[,c(1,17)]
-
-
 
 converted_data <- filtered_data
 # 匹配并转换行名
@@ -98,9 +92,6 @@ writeData(wb, paste0(Gene,"_S1"), S1)
 saveWorkbook(wb, paste(folder_dir,paste0(Gene,".xlsx"),sep = ""), overwrite = TRUE)
 
 
-
-
-
 # 准备进行通路富集分析
 gene_list <- S1[,1]
 enrichDatabase <- c("pathway_KEGG","geneontology_Biological_Process_noRedundant","pathway_Reactome","community-contributed_Hallmark50")[c(1,2,3,4)]
@@ -119,7 +110,6 @@ pathway_analysis <- WebGestaltR(
   outputDirectory = folder_dir,
   projectName = Gene
 )
-
 
 addWorksheet(wb, paste0(Gene,"_S2"))
 # 将数据写入工作表
