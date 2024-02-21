@@ -19,14 +19,51 @@ Before running the code, make sure you have the following software and packages 
 
 In addition, you will need to install the following R packages:
 
-- `GEOquery`: Used for downloading GEO data.
-- `limma`: Used for differential gene expression analysis.
-- `ggplot2`: Used for data visualization.
+- `GEOquery`: This package is used for downloading GEO data. It provides functions to access and retrieve data from the Gene Expression Omnibus (GEO) database.
+- `limma`: This package is used for differential gene expression analysis. It provides functions for fitting linear models to microarray and RNA-seq data and performing statistical analysis to identify differentially expressed genes.
+- `WebGestaltR`: This package is used for gene enrichment analysis. It provides functions to perform functional enrichment analysis using the WebGestalt web server.
+- `biomaRt`: This package is used for accessing biological data from online databases. It provides functions to retrieve gene annotations, sequences, and other genomic information from the BioMart databases.
+- `openxlsx`: This package is used for reading and writing Excel files. It provides functions to read data from Excel files into R and write data frames to Excel files.
+- `readxl`: This package is used for reading Excel files. It provides functions to read data from Excel files into R.
+- `writexl`: This package is used for writing Excel files. It provides functions to write data frames to Excel files.
 
-You can install these packages by running the following command in R:
+To use the provided R code, make sure to install the required packages using the following commands:
 
 ```R
-install.packages(c("GEOquery", "limma", "ggplot2"))
+install.packages("GEOquery")
+install.packages("limma")
+install.packages("WebGestaltR")
+install.packages("biomaRt")
+install.packages("openxlsx")
+install.packages("readxl")
+install.packages("writexl")
+```
+
+After installing the packages, you can load them in your R script using the `library()` function:
+
+```R
+library(GEOquery)
+library(limma)
+library(WebGestaltR)
+library(biomaRt)
+library(openxlsx)
+library(readxl)
+library(writexl)
+```
+Please ensure that you have an internet connection to download the required packages and access online resources.
+
+For more information on each package and its documentation, please refer to the respective package documentation and vignettes.
+
+- `GEOquery`: [Documentation](https://bioconductor.org/packages/release/bioc/html/GEOquery.html)
+- `limma`: [Documentation](https://bioconductor.org/packages/release/bioc/html/limma.html)
+- `WebGestaltR`: [Documentation](https://bioconductor.org/packages/release/bioc/html/WebGestaltR.html)
+- `biomaRt`: [Documentation](https://bioconductor.org/packages/release/bioc/html/biomaRt.html)
+- `openxlsx`: [Documentation](https://cran.r-project.org/package=openxlsx)
+- `readxl`: [Documentation](https://cran.r-project.org/package=readxl)
+- `writexl`: [Documentation](https://cran.r-project.org/package=writexl)
+
+Please refer to the documentation for each package to learn more about their functionalities and usage.
+
 ```
 
 ## Installation
