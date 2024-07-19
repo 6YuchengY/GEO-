@@ -1,0 +1,210 @@
+library(GEOquery)
+library(limma)
+library(umap)
+library(WebGestaltR)
+library(annotate)
+library(biomaRt)
+library(openxlsx)
+library(readxl)
+library(writexl)
+
+#' 加载GEO数据集的函数
+#' load GEO datasets
+load_geo_data <- function(geo_id, gpl_id) {
+  gset <- getGEO(geo_id, GSEMatrix = TRUE, getGPL = FALSE)
+  if (length(gset) > 1) idx <- grep(gpl_id, attr(gset, "names")) else idx <- 1
+  gset <- gset[[idx]]
+  return(gset)
+}
+
+#' log2转换数据的函数
+#' log2 transform
+log2_transform <- function(ex) {
+  qx <- as.numeric(quantile(ex, c(0., 0.25, 0.5, 0.75, 0.99, 1.0), na.rm = TRUE))
+  LogC <- (qx[5] > 100) || (qx[6] - qx[1] > 50 && qx[2] > 0)
+  if (LogC) { 
+    ex[which(ex <= 0)] <- NaN
+    ex <- log2(ex)
+  }
+  return(ex)
+}
+
+#' 使用limma进行差异表达分析的函数，输入的实验设计见最后的示例，这里是对照组比实验组，注意方向
+#' A function to perform differential expression analysis using limma. 
+#' See the example at the end for the input experimental design. Here, the control group is compared to the experimental group.
+#' @param ex A matrix containing gene expression data, with genes as rows and samples as columns.
+#' @param control A vector representing the experimental design for the control group.
+#' @param exp A vector representing the experimental design for the experimental group.
+#' @param pos A vector indicating the positions of the samples to be used in the analysis.
+#' @return A data frame containing the results of the differential expression analysis.
+#' @examples
+#' # Example data
+#' ex <- matrix(rnorm(1000), nrow = 100, ncol = 10)
+#' control <- c(1, 1, 1, 1, 0, 0, 0, 0, 0, 0)
+#' exp <- c(0, 0, 0, 0, 1, 1, 1, 1, 1, 1)
+#' pos <- 1:10
+#' result <- perform_limma_analysis(ex, control, exp, pos)
+#' print(result)
+perform_limma_analysis <- function(ex, control, exp, pos) {
+  design <- cbind(control, exp)
+  colnames(design) <- c("control", "exp")
+  rownames(design)=colnames(ex)[pos]
+  
+  contrast.matrix <- makeContrasts(paste0(c("exp", "control"), collapse = "-"), levels = design)
+  
+  fit <- lmFit(ex[,pos], design)
+  fit2 <- contrasts.fit(fit, contrast.matrix)
+  fit2 <- eBayes(fit2)
+  
+  nrDEG <- topTable(fit2, coef = 1, n = Inf)
+  nrDEG <- na.omit(nrDEG)
+  
+  return(nrDEG)
+}
+
+#' 过滤差异表达基因的函数，默认卡p值（FDR）0.05，FC卡1.5(对数)
+#' A function to filter different expressed genes
+filter_degs <- function(nrDEG, p_val_threshold = 0.05, logfc_threshold = log2(1.5), use_fdr = TRUE) {
+  if (use_fdr) {
+    condition1 <- nrDEG$adj.P.Val < p_val_threshold
+  } else {
+    condition1 <- nrDEG$P.Value < p_val_threshold
+  }
+  condition2 <- nrDEG$logFC > logfc_threshold
+  condition <- condition1 & condition2
+  filtered_data <- nrDEG[condition,]
+  return(filtered_data)
+}
+
+#' 注释基因的函数，这里用到的方法是去掉后缀注释，不同的数据集有不同的注释方法
+#' A function to annotate genes, be aware that different datasets may require different annotation methods.
+annotate_genes <- function(filtered_data, dataset) {
+  if (nrow(filtered_data) == 0) {
+    stop("No genes passed the filtering criteria.")
+  }
+  
+  mart <- useMart("ensembl", "hsapiens_gene_ensembl", host = "https://dec2021.archive.ensembl.org")
+  # 获取注释信息
+  # get annotate info
+  hg_symbols <- getBM(attributes = c('ensembl_gene_id', 'external_gene_name'), 
+                      filters = 'ensembl_gene_id', 
+                      values = gsub('_at', '', rownames(filtered_data)), 
+                      mart = mart)
+  # 去掉行名中的 '_at',注意这一步操作不是所有的都要做的。
+  # remove "_at", not all the datasets need this.
+  rownames(filtered_data) <- gsub('_at', '', rownames(filtered_data))
+  annotated_data <- merge(filtered_data, hg_symbols, by.x = "row.names", by.y = "ensembl_gene_id", all.x = TRUE)
+  # 去掉没有注释信息的行
+  # remove rows without annotation
+  annotated_data <- annotated_data[!is.na(annotated_data$external_gene_name), ]
+  # 去掉重复的基因名
+  # remove overlapped genes
+  annotated_data <- annotated_data[!duplicated(annotated_data$external_gene_name), ]
+  # 设置新的行名并移除不需要的列
+  # new row names & remove cols we do not need
+  rownames(annotated_data) <- annotated_data$external_gene_name
+  annotated_data <- annotated_data[, -1]
+  
+  return(annotated_data)
+}
+
+
+#' 保存数据到Excel的函数，如果有工作表，添加新的工作表
+#' save data to excel, new sheet will be added directly
+save_to_excel <- function(data, filepath, sheet_name, wb = NULL) {
+  if (is.null(wb)) {
+    wb <- createWorkbook()
+  }
+  addWorksheet(wb, sheet_name)
+  writeData(wb, sheet_name, data)
+  saveWorkbook(wb, filepath, overwrite = TRUE)
+  return(wb)
+}
+#' 执行通路富集分析的函数
+#' A function to perform pathway enrichment analysis using WebGestaltR.
+#'
+#' @param gene_list A vector of gene symbols to be analyzed.
+#' @param ref_file A file path to the reference gene list.
+#' @param output_dir A directory where the output files will be saved.
+#' @param project_name A name for the project, used to label the output files.
+#' @return A data frame containing the results of the pathway enrichment analysis, filtered by p-value < 0.05.
+#' @examples
+#' # Example usage
+#' gene_list <- c("TP53", "BRCA1", "BRCA2", "EGFR", "MYC")
+#' ref_file <- "path/to/reference_gene_file.txt"
+#' output_dir <- "path/to/output_directory"
+#' project_name <- "MyProject"
+#' result <- perform_pathway_analysis(gene_list, ref_file, output_dir, project_name)
+#' print(result)
+perform_pathway_analysis <- function(gene_list, ref_file, output_dir, project_name) {
+  enrichDatabase <- c("pathway_KEGG", "geneontology_Biological_Process_noRedundant", "pathway_Reactome", "community-contributed_Hallmark50")
+  
+  pathway_analysis <- WebGestaltR(
+    enrichMethod = "ORA",
+    organism = "hsapiens",
+    enrichDatabase = enrichDatabase,
+    interestGene = gene_list,
+    interestGeneType = "genesymbol",
+    referenceGeneFile = ref_file,
+    referenceGeneType = "entrezgene_protein-coding",
+    isOutput = TRUE,
+    outputDirectory = output_dir,
+    projectName = project_name,
+    fdrThr = 1
+  )
+  
+  pathway_analysis <- pathway_analysis[pathway_analysis$pValue < 0.05, ]
+  return(pathway_analysis)
+}
+
+# Main function
+main <- function(geo_id, gpl_id, control, exp, pos, gene, folder_dir, ref_file) {
+  gset <- load_geo_data(geo_id, gpl_id)
+  ex <- exprs(gset)
+  ex <- log2_transform(ex)
+  nrDEG <- perform_limma_analysis(ex, control, exp, pos)
+
+  # 注释基因
+  # Annotate genes
+  annotated_nrDEG <- annotate_genes(nrDEG, "hsapiens_gene_ensembl")
+  
+  # 保存完整的差异表达分析结果
+  # Save the complete differential expression analysis results
+  S1 <- cbind(Gene = rownames(annotated_nrDEG), annotated_nrDEG)
+  wb <- save_to_excel(S1, paste0(folder_dir, gene, ".xlsx"), paste0(gene, "_S1"))
+  
+  # 不想用FDR就给FALSE
+  # if you do not want FDR, "use_fdr" should be FALSE
+  filtered_data <- filter_degs(annotated_nrDEG, use_fdr = TRUE)
+  
+  S2 <- cbind(Gene = rownames(filtered_data), filtered_data)
+  # 使用同一Workbook对象保存S2数据
+  # Use the same workbook to save S2 data
+  wb <- save_to_excel(S2, paste0(folder_dir, gene, ".xlsx"), paste0(gene, "_S2"), wb)
+  
+  gene_list <- rownames(filtered_data)
+  pathway_analysis <- perform_pathway_analysis(gene_list, ref_file, folder_dir, gene)
+  # 使用同一Workbook对象保存pathway_analysis数据
+  # Use the same workbook to save pathway_analysis data
+  save_to_excel(pathway_analysis, paste0(folder_dir, gene, ".xlsx"), paste0(gene, "_S3"), wb)  
+  
+  
+}
+
+# 使用示例，最后会得到三个表，S1为完整limma结果，S2为差异基因，S3为富集分析结果
+# Example of usage: In the end, you will get three tables. S1 is the complete limma results, S2 is the differential genes, and S3 is the enrichment analysis results.
+main(
+  geo_id = "GSE60990", 
+  gpl_id = "GPL19145", 
+  # 前三组对照，后三组实验，如果实验组和对照组隔很远，还是以靠近的写法写，调整pos参数让他们靠近
+  # The first three groups are controls, and the last three groups are experimental. 
+  # If the experimental group and the control group are far apart, adjust the pos parameter to bring them closer together.
+  control <- c(1,1,1,0,0,0),
+  exp <- c(0,0,0,1,1,1),
+  # 对照组和实验组在的列的位置
+  # cols that con & exp occur.
+  pos <- c(1:6),
+  gene = "GNB1", 
+  folder_dir = "2024-2-3/GEO/result/", 
+  ref_file = "2024-2-3/GEO/genome protein-coding.txt"
+)
